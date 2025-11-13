@@ -1,6 +1,6 @@
 {
   "name": "fire-diff",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "CLI tool to find affected Firebase Cloud Functions endpoints based on git changes",
   "keywords": [
     "firebase",
@@ -44,10 +44,12 @@
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "dependencies": {
+    "glob": "^10.3.10"
+  },
   "devDependencies": {
     "@types/glob": "^8.1.0",
     "@types/node": "^24.10.1",
-    "glob": "^11.0.3",
     "typescript": "^5.9.3"
   }
 }
