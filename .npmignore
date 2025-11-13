@@ -1,0 +1,32 @@
+# Source files
+src/
+tsconfig.json
+
+# Development files
+.git/
+.gitignore
+*.log
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Build artifacts - source maps are included for debugging
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# Documentation (will be included via files field in package.json)
+# README.md
+# LICENSE
+

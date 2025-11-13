@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    // --- TEMEL AYARLAR ---
+    "target": "es2020",         // Node.js 14+ için es2020 iyidir (es2016 da olur).
+    "module": "commonjs",       // Bir Node.js CLI için en "sağlam" modül sistemi.
+    "outDir": "./dist",         // Derlenmiş JS kodunun çıkacağı yer.
+    "esModuleInterop": true,    // `require` ve `import` uyumluluğu için şart.
+    "skipLibCheck": true,       // Başkalarının (boktan :)) ) tiplerini kontrol etme.
+
+    // --- SAĞLAMLIK AYARLARI ---
+    "strict": true,                         // Sizin istediğiniz "katı" kontrol.
+    "noUncheckedIndexedAccess": true,       // (Bunu sevdim, kalsın)
+    "exactOptionalPropertyTypes": true,     // (Bu da güzel, kalsın)
+
+    // --- CLI ARACI İÇİN ÖNEMLİ ---
+    "sourceMap": true // Hata ayıklama (debug) için 'dist/cli.js.map' oluşturur.
+  },
+  "include": [
+    "src/**/*" // Sadece 'src' klasöründeki kodları derle.
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

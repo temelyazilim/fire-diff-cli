@@ -1,0 +1,53 @@
+{
+  "name": "fire-diff",
+  "version": "1.0.0",
+  "description": "CLI tool to find affected Firebase Cloud Functions endpoints based on git changes",
+  "keywords": [
+    "firebase",
+    "firebase functions",
+    "cloud-functions",
+    "cli",
+    "git",
+    "deployment",
+    "affected-functions",
+    "dependency-analysis"
+  ],
+  "author": {
+    "name": "Serdar Temel",
+    "email": "serdar@temel.xyz",
+    "url": "https://temel.xyz"
+  },
+  "license": "MIT",
+  "main": "dist/cli.js",
+  "bin": {
+    "fire-diff": "dist/cli.js",
+    "fire-diff-setup": "dist/setup.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/temelyazilim/fire-diff-cli.git"
+  },
+  "homepage": "https://github.com/temelyazilim/fire-diff-cli#readme",
+  "bugs": {
+    "url": "https://github.com/temelyazilim/fire-diff-cli/issues"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/node": "^24.10.1",
+    "glob": "^11.0.3",
+    "typescript": "^5.9.3"
+  }
+}
