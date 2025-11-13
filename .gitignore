@@ -36,3 +36,6 @@ coverage/
 *.tmp
 *.temp
 
+# npm pack tarballs
+*.tgz
+
