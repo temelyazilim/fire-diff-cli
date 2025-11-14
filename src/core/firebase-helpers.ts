@@ -1,52 +1,88 @@
 /**
  * Firebase helper functions module.
- * 
  * This module provides utility functions for detecting Firebase Cloud Functions
  * triggers and endpoints in code blocks.
- * 
  * @module core/firebase-helpers
  */
 
 /**
+ * Defines the structured information returned by the endpoint check.
+ */
+export interface EndpointInfo {
+  /** Whether the code block contains a Firebase Functions endpoint trigger. */
+  isEndpoint: boolean;
+  /** The trigger kind/name (e.g., "onCall", "functions.https.onCall"). */
+  kind: string | null;
+  /** The Firebase Functions version ('v1' or 'v2'). */
+  version: 'v1' | 'v2' | null;
+}
+
+/**
+ * Default return value when no Firebase Functions endpoint is detected.
+ */
+const NOT_AN_ENDPOINT: EndpointInfo = {
+  isEndpoint: false,
+  kind: null,
+  version: null,
+};
+
+/**
+ * Regular expression to match Firebase Functions V2 triggers.
+ * V2 functions are called directly (e.g., onCall(), onRequest()).
+ */
+const V2_REGEX = new RegExp(
+  '\\b(onCall|onRequest|onSchedule|onTaskDispatched|onMessagePublished|' +
+  'onValueWritten|onValueCreated|onValueUpdated|onValueDeleted|' +
+  'onObjectFinalized|onObjectArchived|onObjectDeleted|onObjectMetadataUpdated|' +
+  'onDocumentWritten|onDocumentCreated|onDocumentUpdated|onDocumentDeleted|' +
+  'onUserCreated|onUserDeleted|onBlockingFunction|' +
+  'onCustomEventPublished|onLogWritten)' +
+  '\\s*\\(',
+  'm'
+);
+
+/**
+ * Regular expression to match Firebase Functions V1 triggers.
+ * V1 functions are called via the functions namespace (e.g., functions.https.onCall()).
+ */
+const V1_REGEX = new RegExp(
+  '\\b(functions\\.(https|pubsub|database|firestore|storage|auth|tasks|' +
+  'analytics|remoteConfig|testLab|crashlytics|appDistribution|alerts)' +
+  '\\.(onCall|onRequest|schedule|ref|instance|document|object|user|taskQueue|' +
+  'onUpdate|event|testMatrix|onNewFatalError|onNewNonFatalError|onNewAnr|' +
+  'onNewTesterIosDevicePublished|onNewAppFeedbackPublished|onInAppFeedbackPublished|' +
+  'onNewEnrollment|onAccept|onAppCrashDetected|onDataWritten))' +
+  '\\s*\\(',
+  'm'
+);
+
+/**
  * Checks if a given block of code (as a string) contains
- * a known Firebase Functions trigger (V1 or V2).
- *
- * This uses a Regex to check for patterns like 'onCall(', 'onRequest(',
- * 'functions.https.onCall(', 'functions.database.ref(', etc.
+ * a known Firebase Functions trigger (V1 or V2) and returns
+ * structured information about it.
  *
  * @param data The string content of the function/entity block to check.
- * @returns True if a Firebase endpoint trigger is detected, otherwise false.
+ * @returns An 'EndpointInfo' object with 'isEndpoint', 'kind', and 'version'.
  */
-export function isFirebaseEndPoint(data: string): boolean {
+export function getEndpointInfo(data: string): EndpointInfo {
   
-  // This Regex checks for V1 and V2 trigger patterns.
-  // It looks for the function name followed by optional whitespace and an opening parenthesis '('.
-  // \b ensures we match whole words (e.g., 'onCall' not 'myOnCall').
-  const firebaseTriggerRegex = new RegExp(
-    // V2 Triggers (e.g., onCall, onRequest, onValueWritten, etc.)
-    '\\b(onCall|onRequest|onSchedule|onTaskDispatched|onMessagePublished|' +
-    'onValueWritten|onValueCreated|onValueUpdated|onValueDeleted|' +
-    'onObjectFinalized|onObjectArchived|onObjectDeleted|onObjectMetadataUpdated|' +
-    'onDocumentWritten|onDocumentCreated|onDocumentUpdated|onDocumentDeleted|' +
-    'onUserCreated|onUserDeleted|onBlockingFunction|onCustomEventPublished)' +
-    
-    // Optional whitespace and parenthesis
-    '\\s*\\(' +
-    
-    '|' + // OR
-    
-    // --- GÜNCELLENMİŞ V1 KURALI ---
-    // V1 Triggers (now includes '.instance(')
-    '\\b(functions\\.(https|pubsub|database|firestore|storage|auth|tasks)\\.' +
-    // '.ref(' OR '.instance(' OR '.document(' etc.
-    '(onCall|onRequest|schedule|ref|instance|document|object|user|taskQueue))' +
-    // --- GÜNCELLEME BİTTİ ---
-    
-    // Optional whitespace and parenthesis
-    '\\s*\\(',
-    
-    'm' 
-  );
+  const v2Match = data.match(V2_REGEX);
+  if (v2Match && v2Match[1]) {
+    return {
+      isEndpoint: true,
+      kind: v2Match[1],
+      version: 'v2',
+    };
+  }
 
-  return firebaseTriggerRegex.test(data);
+  const v1Match = data.match(V1_REGEX);
+  if (v1Match && v1Match[1]) {
+    return {
+      isEndpoint: true,
+      kind: v1Match[1],
+      version: 'v1',
+    };
+  }
+  
+  return NOT_AN_ENDPOINT;
 }

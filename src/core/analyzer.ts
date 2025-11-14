@@ -12,7 +12,7 @@ import path from 'path';
 import { getProjectFiles } from '../utils/file-system';
 import { findFilesImportingTarget } from './find-includes';
 import { fileTopFunctions } from './find-top-functions'; 
-import { isFirebaseEndPoint } from './firebase-helpers';
+import { getEndpointInfo } from './firebase-helpers';
 import { AnalysisResult, AnalysisSeed, FileFunctionsResult } from './types';
 
 /**
@@ -176,13 +176,14 @@ export class FaeptsAnalyzer {
         const blockContent = fileContent.substring(start, end);
         
         if (blockContent.includes(baseData.fn)) {
-          const isEndPoint = isFirebaseEndPoint(blockContent);
+          const endpointInfo = getEndpointInfo(blockContent);
           const tmpFunc = {
             fn: currentEntity.fn,
             path: affectedFilePath
           };
           
-          if (isEndPoint) {
+          if (endpointInfo.isEndpoint === true) {
+            console.log(endpointInfo);
              if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
                this.endPoints.push(tmpFunc);
              }
