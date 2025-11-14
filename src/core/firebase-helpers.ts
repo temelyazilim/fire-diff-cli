@@ -27,31 +27,71 @@ const NOT_AN_ENDPOINT: EndpointInfo = {
 };
 
 /**
- * Regular expression to match Firebase Functions V2 triggers.
- * V2 functions are called directly (e.g., onCall(), onRequest()).
+ * Triggers that exist ONLY in V1 (not in V2).
+ * These can be identified by their unique names.
  */
-const V2_REGEX = new RegExp(
-  '\\b(onCall|onRequest|onSchedule|onTaskDispatched|onMessagePublished|' +
-  'onValueWritten|onValueCreated|onValueUpdated|onValueDeleted|' +
-  'onObjectFinalized|onObjectArchived|onObjectDeleted|onObjectMetadataUpdated|' +
-  'onDocumentWritten|onDocumentCreated|onDocumentUpdated|onDocumentDeleted|' +
-  'onUserCreated|onUserDeleted|onBlockingFunction|' +
-  'onCustomEventPublished|onLogWritten)' +
+const V1_ONLY_TRIGGERS = [
+  'schedule', 'ref', 'instance', 'document', 'object', 'user', 'taskQueue',
+  'onUpdate', 'event', 'testMatrix', 'onNewFatalError', 'onNewNonFatalError', 'onNewAnr',
+  'onNewTesterIosDevicePublished', 'onNewAppFeedbackPublished', 'onInAppFeedbackPublished',
+  'onNewEnrollment', 'onAccept', 'onAppCrashDetected', 'onDataWritten'
+];
+
+/**
+ * Triggers that exist ONLY in V2 (not in V1).
+ * These can be identified by their unique names.
+ */
+const V2_ONLY_TRIGGERS = [
+  'onSchedule', 'onTaskDispatched', 'onMessagePublished',
+  'onValueWritten', 'onValueCreated', 'onValueUpdated', 'onValueDeleted',
+  'onObjectFinalized', 'onObjectArchived', 'onObjectDeleted', 'onObjectMetadataUpdated',
+  'onDocumentWritten', 'onDocumentCreated', 'onDocumentUpdated', 'onDocumentDeleted',
+  'onUserCreated', 'onUserDeleted', 'onBlockingFunction',
+  'onCustomEventPublished', 'onLogWritten'
+];
+
+/**
+ * Regular expression to match V1-only triggers via functions namespace.
+ * Example: functions.database.ref(...), functions.pubsub.schedule(...)
+ */
+const V1_ONLY_REGEX = new RegExp(
+  '\\b(functions\\.(https|pubsub|database|firestore|storage|auth|tasks|' +
+  'analytics|remoteConfig|testLab|crashlytics|appDistribution|alerts)' +
+  '\\.(' + V1_ONLY_TRIGGERS.join('|') + '))' +
   '\\s*\\(',
   'm'
 );
 
 /**
- * Regular expression to match Firebase Functions V1 triggers.
- * V1 functions are called via the functions namespace (e.g., functions.https.onCall()).
+ * Regular expression to match V2-only triggers (called directly).
+ * Example: onSchedule(...), onValueWritten(...)
  */
-const V1_REGEX = new RegExp(
+const V2_ONLY_REGEX = new RegExp(
+  '\\b(' + V2_ONLY_TRIGGERS.join('|') + ')' +
+  '\\s*\\(',
+  'm'
+);
+
+/**
+ * Regular expression to match shared triggers in V1 format.
+ * Shared triggers: onCall, onRequest
+ * V1 format: functions.https.onCall(...)
+ */
+const V1_SHARED_REGEX = new RegExp(
   '\\b(functions\\.(https|pubsub|database|firestore|storage|auth|tasks|' +
   'analytics|remoteConfig|testLab|crashlytics|appDistribution|alerts)' +
-  '\\.(onCall|onRequest|schedule|ref|instance|document|object|user|taskQueue|' +
-  'onUpdate|event|testMatrix|onNewFatalError|onNewNonFatalError|onNewAnr|' +
-  'onNewTesterIosDevicePublished|onNewAppFeedbackPublished|onInAppFeedbackPublished|' +
-  'onNewEnrollment|onAccept|onAppCrashDetected|onDataWritten))' +
+  '\\.(onCall|onRequest))' +
+  '\\s*\\(',
+  'm'
+);
+
+/**
+ * Regular expression to match shared triggers in V2 format.
+ * Shared triggers: onCall, onRequest
+ * V2 format: onCall(...), onRequest(...)
+ */
+const V2_SHARED_REGEX = new RegExp(
+  '\\b(onCall|onRequest)' +
   '\\s*\\(',
   'm'
 );
@@ -66,21 +106,46 @@ const V1_REGEX = new RegExp(
  */
 export function getEndpointInfo(data: string): EndpointInfo {
   
-  const v2Match = data.match(V2_REGEX);
-  if (v2Match && v2Match[1]) {
+  // Step 1: Check for V1-only triggers (most specific, check first)
+  // Example: functions.database.ref(...), functions.pubsub.schedule(...)
+  const v1OnlyMatch = data.match(V1_ONLY_REGEX);
+  if (v1OnlyMatch && v1OnlyMatch[1]) {
     return {
       isEndpoint: true,
-      kind: v2Match[1],
+      kind: v1OnlyMatch[1],
+      version: 'v1',
+    };
+  }
+
+  // Step 2: Check for V2-only triggers (most specific, check second)
+  // Example: onSchedule(...), onValueWritten(...)
+  const v2OnlyMatch = data.match(V2_ONLY_REGEX);
+  if (v2OnlyMatch && v2OnlyMatch[1]) {
+    return {
+      isEndpoint: true,
+      kind: v2OnlyMatch[1],
       version: 'v2',
     };
   }
 
-  const v1Match = data.match(V1_REGEX);
-  if (v1Match && v1Match[1]) {
+  // Step 3: Check for shared triggers in V1 format (functions.https.onCall)
+  // Check V1 first to avoid false matches with V2
+  const v1SharedMatch = data.match(V1_SHARED_REGEX);
+  if (v1SharedMatch && v1SharedMatch[1]) {
     return {
       isEndpoint: true,
-      kind: v1Match[1],
+      kind: v1SharedMatch[1],
       version: 'v1',
+    };
+  }
+
+  // Step 4: Check for shared triggers in V2 format (onCall, onRequest)
+  const v2SharedMatch = data.match(V2_SHARED_REGEX);
+  if (v2SharedMatch && v2SharedMatch[1]) {
+    return {
+      isEndpoint: true,
+      kind: v2SharedMatch[1],
+      version: 'v2',
     };
   }
   

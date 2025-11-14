@@ -108,7 +108,6 @@ export class FaeptsAnalyzer {
       }
       
       if (existingEntry?.checked === false) {
-        //console.warn(`[FIRE-DIFF Warning] Circular dependency detected: ${key}`);
         return;
       }
     }

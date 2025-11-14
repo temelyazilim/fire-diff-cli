@@ -7,6 +7,9 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 🔍 **Automatic Dependency Analysis**: Recursively finds all functions affected by code changes
 - 📊 **Git Integration**: Analyzes git diff to identify changed files
 - 🚀 **Deployment Ready**: Outputs deployment names ready for Firebase deployment
+- 📋 **List All Endpoints**: List all Firebase Functions endpoints in your project
+- 📄 **JSON Output Support**: Export endpoint lists in structured JSON format
+- 🔄 **Firebase V1/V2 Support**: Automatically detects and distinguishes between Firebase Functions V1 and V2
 - ⚡ **Fast**: Uses caching and efficient dependency traversal
 - 🎯 **TypeScript Support**: Built for TypeScript projects
 
@@ -72,18 +75,101 @@ npx fire-diff-setup
 
 This will add the `"affected": "fire-diff"` script to your `package.json`.
 
+## Commands
+
+### `analyze` (Default)
+
+Analyzes git changes and finds affected Firebase Cloud Functions endpoints:
+
+```bash
+fire-diff
+# or
+fire-diff analyze
+```
+
+### `endpoints`
+
+Lists all Firebase Functions endpoints in your project:
+
+```bash
+fire-diff endpoints
+```
+
+**Options:**
+- `--json`: Output results in JSON format
+
+```bash
+fire-diff endpoints --json
+```
+
+The JSON output groups endpoints by file path and Firebase version (v1/v2), making it easy to process programmatically.
+
+### Help
+
+Display help information:
+
+```bash
+fire-diff --help
+# or
+fire-diff -h
+```
+
 ## Example Output
+
+### Analyze Command
 
 ```
 Affected endpoints:
 -------------------
-gf
-auth
-api
+iap-logPurchaseToken
+iap-listenAppleOrder
+iap-removeAdsWithGold
+iap-readPurchases
 
 Ready to deploy:
 ----------------
-firebase deploy --only functions:gf,functions:auth,functions:api
+firebase deploy --only functions:iap-logPurchaseToken,functions:iap-listenAppleOrder,functions:iap-removeAdsWithGold,functions:iap-readPurchases
+```
+
+### Endpoints Command
+
+```
+[FIRE-DIFF] Listing all endpoints in the project...
+--------------------------------------------
+| src/index.ts
+--------------------------------------------
+checkGameTimeouts (checkGameTimeouts) [functions.pubsub.schedule - v1]
+checkOldChatImagesForDeleteV2 (checkOldChatImagesForDeleteV2) [onSchedule - v2]
+...
+--------------------------------------------
+| src/exports/gamefunctions.ts
+--------------------------------------------
+gf-getGame (getGame) [functions.https.onCall - v1]
+gf-makeMoveV2 (makeMoveV2) [onCall - v2]
+...
+```
+
+### JSON Output
+
+```json
+{
+  "src/index.ts": {
+    "v1": [
+      {
+        "name": "checkGameTimeouts",
+        "deployname": "checkGameTimeouts",
+        "kind": "functions.pubsub.schedule"
+      }
+    ],
+    "v2": [
+      {
+        "name": "checkOldChatImagesForDeleteV2",
+        "deployname": "checkOldChatImagesForDeleteV2",
+        "kind": "onSchedule"
+      }
+    ]
+  }
+}
 ```
 
 The tool will:
@@ -98,6 +184,28 @@ The tool will:
 2. **Git Analysis**: Identifies changed `.ts` files using `git diff`
 3. **Dependency Traversal**: Recursively finds all functions that depend on changed files
 4. **Deployment Mapping**: Maps affected functions to deployment groups based on your `index.ts` structure
+
+## Changelog
+
+### [1.0.2] - 2025-11-14
+
+#### Added
+- `endpoints` command to list all Firebase Functions endpoints in the project
+- `--json` flag for structured JSON output of endpoint lists
+- Improved Firebase Functions V1/V2 detection and distinction
+- Firebase CLI-like command structure (`fire-diff [command] [options]`)
+
+#### Changed
+- CLI argument parsing now follows Firebase CLI conventions
+- JSON output groups endpoints by file path and version (v1/v2)
+
+### [1.0.1] - 2025-11-13
+
+#### Features
+- Automatic dependency analysis for affected Firebase Functions
+- Git integration for change detection
+- Deployment-ready output format
+- TypeScript project support
 
 ## Requirements
 

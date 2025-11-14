@@ -50,4 +50,20 @@ export interface FileFunctionsResult {
     /** Array of all top-level entities found in the file, sorted by start position. */
     funcs: TopLevelEntity[];
 }
-  
+
+/**
+ * Represents the final structured output for a single discovered endpoint.
+ * This is the type returned by the EndPointLister class.
+ */
+export interface EndpointListResult {
+    /** The path to the file, relative to the project root (e.g., "src/index.ts"). */
+    path: string;
+    /** The original name of the entity in the source code (e.g., "makeMoveV2"). */
+    name: string;
+    /** The final calculated deployment name (e.g., "gf-makeMoveV2"). */
+    deployname: string;
+    /** The type of trigger (e.g., "onCall", "functions.database.ref"). */
+    kind: string | null;
+    /** The function version (e.g., "v1" or "v2"). */
+    version: 'v1' | 'v2' | null;
+}

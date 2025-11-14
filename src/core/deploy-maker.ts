@@ -44,10 +44,10 @@ export class DeployMaker {
     this.projectRoot = projectRoot;
     this.deploymentNameMap = new Map<string, string>();
     
-    // 1. "firebase.json"u oku ve "ana" (main) .ts dosyasını bul
+    // Read 'firebase.json' and find the main entry point
     this.indexTsPath = this.findIndexFileFromConfig();
 
-    // 2. "Ana" .ts dosyasını analiz et ve "grup haritasını" (map) oluştur
+    // Analyze the main entry file and build the deployment group map
     this.buildDeploymentMap();
   }
 
@@ -77,7 +77,6 @@ export class DeployMaker {
       }
 
       if (!mainJsPath) {
-        //console.warn("[FIRE-DIFF Warning] 'main' field not found in firebase.json. Assuming 'src/index.ts'.");
         return defaultIndexPath;
       }
 
@@ -119,7 +118,7 @@ export class DeployMaker {
 
     ts.forEachChild(sourceFile, (node) => {
       
-      // Notasyon 1: exports.gf = require('./path') (Sizin V1 notasyonunuz)
+      // V1 Notation: exports.groupName = require('./path')
       if (
         ts.isExpressionStatement(node) &&
         ts.isBinaryExpression(node.expression) &&
@@ -132,11 +131,10 @@ export class DeployMaker {
         node.expression.right.expression.text === 'require'
       ) {
         
-        // --- DÜZELTME BURADA ---
-        // 'node.expression.right.arguments[0]'ı güvenli bir şekilde al
+        // Safely get the require path argument
         const arg = node.expression.right.arguments[0];
 
-        // 'arg'ın hem var olduğunu hem de 'StringLiteral' olduğunu kontrol et
+        // Check if argument exists and is a string literal
         if (arg && ts.isStringLiteral(arg)) {
           const groupName = node.expression.left.name.text; // e.g., "gf"
           const requirePath = arg.text; // e.g., "./exports/gamefunctions"
@@ -144,10 +142,9 @@ export class DeployMaker {
           const absolutePath = path.resolve(indexDir, requirePath);
           this.deploymentNameMap.set(absolutePath, groupName);
         }
-        // --- DÜZELTME BİTTİ ---
       }
 
-      // Notasyon 2: export * from './path' (V2/ESM notasyonu)
+      // V2/ESM Notation: export * from './path'
       if (ts.isExportDeclaration(node) && !node.exportClause && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
         const requirePath = node.moduleSpecifier.text; // e.g., "./exports/gamefunctions"
         const groupName = path.basename(requirePath); // e.g., "gamefunctions"
@@ -167,23 +164,23 @@ export class DeployMaker {
 
     for (const endpoint of this.affectedEndPoints) {
       
-      // Kural 1: Endpoint 'index.ts' (ana dosya) içindeyse
+      // Rule 1: If endpoint is in 'index.ts' (main entry file)
       if (endpoint.path === this.indexTsPath) {
         finalNames.add(endpoint.fn);
         continue;
       }
 
-      // Kural 2: Endpoint 'grup haritası'nda (map) ise
+      // Rule 2: If endpoint is in the deployment group map
       const parsedPath = path.parse(endpoint.path);
-      const pathWithoutExtension = path.join(parsedPath.dir, parsedPath.name);
+      const pathWithoutExtension = path.resolve(parsedPath.dir, parsedPath.name);
       
       const groupName = this.deploymentNameMap.get(pathWithoutExtension);
 
       if (groupName) {
-        // V1 (sizin) notasyonunuz: 'grup-fonksiyon'
+        // V1 notation: 'group-function'
         finalNames.add(`${groupName}-${endpoint.fn}`);
       } else {
-        // Kural 3: (V2 veya haritada olmayan)
+        // Rule 3: V2 or not in map (use function name as-is)
         finalNames.add(endpoint.fn);
       }
     }
