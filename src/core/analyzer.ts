@@ -183,10 +183,9 @@ export class FaeptsAnalyzer {
           };
           
           if (endpointInfo.isEndpoint === true) {
-            console.log(endpointInfo);
-             if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
-               this.endPoints.push(tmpFunc);
-             }
+            if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
+              this.endPoints.push(tmpFunc);
+            }
           }
           
           affectedFunctions.push(tmpFunc);
