@@ -17,6 +17,19 @@ import { getEndpointInfo } from './firebase-helpers';
 import { AnalysisResult, AnalysisSeed, FileFunctionsResult } from './types';
 
 /**
+ * Result of checking if a file re-exports the target file.
+ */
+interface ReExportInfo {
+  /** The absolute path of the re-exported file. */
+  path: string;
+  /** 
+   * Names of exported functions (for named exports like export { name } from).
+   * null means export * from (all functions are exported).
+   */
+  exportedNames: string[] | null;
+}
+
+/**
  * Main analyzer class that performs recursive dependency analysis.
  * 
  * Analyzes the project structure, builds a dependency graph, and finds
@@ -160,40 +173,67 @@ export class FaeptsAnalyzer {
       if (!fileContent) continue;
 
       // Check if this file re-exports the target file
-      const reExportedPath = this.findReExportedPath(affectedFilePath, baseData.path);
-      if (reExportedPath) {
-        // If re-exported, directly add endpoints from the re-exported file
-        const reExportedEntityMap = this.topEntities.find(e => e.path === reExportedPath);
+      const reExportInfo = this.findReExportedInfo(affectedFilePath, baseData.path);
+      if (reExportInfo) {
+        // If re-exported, check which functions are exported
+        // Only add the changed function (baseData.fn) if it's exported
+        const reExportedEntityMap = this.topEntities.find(e => e.path === reExportInfo.path);
         if (reExportedEntityMap) {
-          const reExportedFileContent = this.getFileContent(reExportedPath);
-          if (reExportedFileContent) {
-            const sortedEntities = reExportedEntityMap.funcs;
-            for (let i = 0; i < sortedEntities.length; i++) {
-              const entity = sortedEntities[i];
-              if (!entity) continue;
-              
-              const start = entity.start;
-              const nextEntity = sortedEntities[i + 1];
-              const end = nextEntity ? nextEntity.start : reExportedFileContent.length;
-              
-              const blockContent = reExportedFileContent.substring(start, end);
-              const endpointInfo = getEndpointInfo(blockContent);
-              
-              if (endpointInfo.isEndpoint === true) {
-                const tmpFunc = {
-                  fn: entity.fn,
-                  path: reExportedPath
-                };
+          // Check if the changed function (baseData.fn) is exported
+          let shouldIncludeFunction = false;
+          
+          if (reExportInfo.exportedNames === null) {
+            // Wildcard export (export * from): all functions are exported
+            // But we still only include the changed function (baseData.fn)
+            shouldIncludeFunction = true;
+          } else {
+            // Named export (export { name } from): only if the changed function is in the list
+            shouldIncludeFunction = reExportInfo.exportedNames.includes(baseData.fn);
+          }
+          
+          if (shouldIncludeFunction) {
+            // Find the specific function that changed (baseData.fn)
+            const changedEntity = reExportedEntityMap.funcs.find(e => e.fn === baseData.fn);
+            if (changedEntity) {
+              const reExportedFileContent = this.getFileContent(reExportInfo.path);
+              if (reExportedFileContent) {
+                const sortedEntities = reExportedEntityMap.funcs;
+                const entityIndex = sortedEntities.indexOf(changedEntity);
+                const start = changedEntity.start;
+                const nextEntity = sortedEntities[entityIndex + 1];
+                const end = nextEntity ? nextEntity.start : reExportedFileContent.length;
                 
-                if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
-                  this.endPoints.push(tmpFunc);
+                const blockContent = reExportedFileContent.substring(start, end);
+                const endpointInfo = getEndpointInfo(blockContent);
+                
+                if (endpointInfo.isEndpoint === true) {
+                  const tmpFunc = {
+                    fn: changedEntity.fn,
+                    path: reExportInfo.path
+                  };
+                  
+                  if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
+                    this.endPoints.push(tmpFunc);
+                  }
+                  
+                  affectedFunctions.push(tmpFunc);
                 }
-                
-                affectedFunctions.push(tmpFunc);
               }
             }
           }
         }
+        // Skip normal dependency check for re-exported files to avoid duplicate processing
+        // The re-exported file's functions are already handled above
+        if (reExportInfo.path === baseData.path) {
+          continue;
+        }
+      }
+
+      // Skip normal dependency check if this file was re-exported
+      // (re-exported files are already handled in the re-export check above)
+      const isReExportedFile = reExportInfo && reExportInfo.path === affectedFilePath;
+      if (isReExportedFile) {
+        continue;
       }
 
       const entityMap = this.topEntities.find(e => e.path === affectedFilePath);
@@ -205,9 +245,12 @@ export class FaeptsAnalyzer {
         const currentEntity = sortedEntities[i];
         if (!currentEntity) continue;
 
-        if (affectedFilePath === baseData.path && currentEntity.fn === baseData.fn) {
+        // If this is the changed file itself, only check the changed function
+        // (not all functions in the file)
+        if (affectedFilePath === baseData.path && currentEntity.fn !== baseData.fn) {
           continue;
         }
+        
         const start = currentEntity.start;
         const nextEntity = sortedEntities[i + 1];
         const end = nextEntity ? nextEntity.start : fileContent.length; 
@@ -222,9 +265,9 @@ export class FaeptsAnalyzer {
           };
           
           if (endpointInfo.isEndpoint === true) {
-            if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
-              this.endPoints.push(tmpFunc);
-            }
+             if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
+               this.endPoints.push(tmpFunc);
+             }
           }
           
           affectedFunctions.push(tmpFunc);
@@ -243,13 +286,13 @@ export class FaeptsAnalyzer {
 
   /**
    * Checks if a file re-exports the target file.
-   * Returns the absolute path of the re-exported file if found, null otherwise.
+   * Returns information about the re-export including which functions are exported.
    * 
    * @param filePath The file to check for re-exports.
    * @param targetPath The target file path that should be re-exported.
-   * @returns The absolute path of the re-exported file, or null if not found.
+   * @returns Re-export information, or null if not found.
    */
-  private findReExportedPath(filePath: string, targetPath: string): string | null {
+  private findReExportedInfo(filePath: string, targetPath: string): ReExportInfo | null {
     const fileContent = this.getFileContent(filePath);
     if (!fileContent) return null;
 
@@ -268,10 +311,10 @@ export class FaeptsAnalyzer {
     const targetPathWithoutExt = targetPath.replace(/\.ts$/, '');
     const targetPathNormalized = path.normalize(targetPathWithoutExt).replace(/\\/g, '/');
 
-    let reExportedPath: string | null = null;
+    let reExportInfo: ReExportInfo | null = null;
 
     function searchNode(node: ts.Node) {
-      if (reExportedPath) return;
+      if (reExportInfo) return;
 
       // Check for export * from './path' or export { name } from './path'
       if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
@@ -283,7 +326,26 @@ export class FaeptsAnalyzer {
           let resolvedPathNormalized = path.normalize(resolvedPath.replace(/\.ts$/, '')).replace(/\\/g, '/');
           
           if (resolvedPathNormalized === targetPathNormalized) {
-            reExportedPath = targetPath;
+            // Check if it's a named export (export { name } from) or wildcard export (export * from)
+            if (node.exportClause && ts.isNamedExports(node.exportClause)) {
+              // Named export: export { name1, name2 } from './path'
+              const exportedNames: string[] = [];
+              for (const element of node.exportClause.elements) {
+                if (ts.isIdentifier(element.name)) {
+                  exportedNames.push(element.name.text);
+                }
+              }
+              reExportInfo = {
+                path: targetPath,
+                exportedNames: exportedNames.length > 0 ? exportedNames : null
+              };
+            } else {
+              // Wildcard export: export * from './path'
+              reExportInfo = {
+                path: targetPath,
+                exportedNames: null // null means all functions
+              };
+            }
             return;
           }
           
@@ -292,18 +354,37 @@ export class FaeptsAnalyzer {
           resolvedPathNormalized = path.normalize(resolvedPath.replace(/\.ts$/, '')).replace(/\\/g, '/');
           
           if (resolvedPathNormalized === targetPathNormalized) {
-            reExportedPath = targetPath;
+            // Check if it's a named export (export { name } from) or wildcard export (export * from)
+            if (node.exportClause && ts.isNamedExports(node.exportClause)) {
+              // Named export: export { name1, name2 } from './path'
+              const exportedNames: string[] = [];
+              for (const element of node.exportClause.elements) {
+                if (ts.isIdentifier(element.name)) {
+                  exportedNames.push(element.name.text);
+                }
+              }
+              reExportInfo = {
+                path: targetPath,
+                exportedNames: exportedNames.length > 0 ? exportedNames : null
+              };
+            } else {
+              // Wildcard export: export * from './path'
+              reExportInfo = {
+                path: targetPath,
+                exportedNames: null // null means all functions
+              };
+            }
             return;
           }
         }
       }
 
-      if (!reExportedPath) {
+      if (!reExportInfo) {
         ts.forEachChild(node, searchNode);
       }
     }
 
     searchNode(sourceFile);
-    return reExportedPath;
+    return reExportInfo;
   }
 }

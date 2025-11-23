@@ -83,6 +83,45 @@ export class GitChangeAnalyzer {
   }
 
   /**
+   * Checks if a line contains a function definition.
+   * 
+   * @param line The line to check (without leading + or -).
+   * @returns True if the line contains a function definition pattern.
+   */
+  private isFunctionDefinitionLine(line: string): boolean {
+    const trimmed = line.trim();
+    // Match: export const functionName = ...
+    // Match: export function functionName ...
+    // Match: export async function functionName ...
+    return /^(export\s+)?(const|function|async\s+function)\s+\w+\s*[=(]/.test(trimmed) ||
+           /^export\s+const\s+\w+\s*=/.test(trimmed);
+  }
+
+  /**
+   * Extracts function name from a function definition line.
+   * 
+   * @param line The line containing the function definition.
+   * @returns Function name or null if not found.
+   */
+  private extractFunctionName(line: string): string | null {
+    const trimmed = line.trim();
+    
+    // Match: export const functionName = ...
+    const constMatch = /(?:export\s+)?const\s+(\w+)\s*=/.exec(trimmed);
+    if (constMatch && constMatch[1]) {
+      return constMatch[1];
+    }
+    
+    // Match: export function functionName ...
+    const functionMatch = /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*[\(]/.exec(trimmed);
+    if (functionMatch && functionMatch[1]) {
+      return functionMatch[1];
+    }
+    
+    return null;
+  }
+
+  /**
    * Finds the top-level entity that contains a given character position.
    * 
    * @param entityMap File's entity map containing all top-level entities.
@@ -92,6 +131,18 @@ export class GitChangeAnalyzer {
   private findEntityAtPosition(entityMap: FileFunctionsResult, position: number): TopLevelEntity | undefined {
     const sortedEntities = entityMap.funcs;
     
+    // First, check if position exactly matches a function's start position
+    // This handles cases where a new function is added and git diff points to its start
+    for (let i = 0; i < sortedEntities.length; i++) {
+      const currentEntity = sortedEntities[i];
+      if (!currentEntity) continue;
+
+      if (position === currentEntity.start) {
+        return currentEntity;
+      }
+    }
+    
+    // If no exact match, use the original logic to find which function contains the position
     for (let i = 0; i < sortedEntities.length; i++) {
       const currentEntity = sortedEntities[i];
       if (!currentEntity) continue;
@@ -115,7 +166,7 @@ export class GitChangeAnalyzer {
     const changedEntities = new Map<string, AnalysisSeed>();
     let currentFilePath: string | undefined = undefined;
     
-    const diffCommand = 'git diff HEAD --relative --unified=0 -- "*.ts" ":(exclude)src/__tests__" ":(exclude)*.test.ts" ":(exclude)*.spec.ts"';
+    const diffCommand = 'git diff HEAD --relative --unified=3 -- "*.ts" ":(exclude)src/__tests__" ":(exclude)*.test.ts" ":(exclude)*.spec.ts"';
     
     let diffOutput: string;
     try {
@@ -127,11 +178,14 @@ export class GitChangeAnalyzer {
     }
 
     const diffLines = diffOutput.split('\n');
+    let inHunk = false;
+    let hunkStartLine = 0;
 
     for (const line of diffLines) {
       if (line.startsWith('+++ b/')) {
         const relativePath = line.substring(6); 
         currentFilePath = path.join(this.projectRoot, relativePath);
+        inHunk = false;
         continue;
       }
 
@@ -143,26 +197,84 @@ export class GitChangeAnalyzer {
         const hunkMatch = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
         
         if (hunkMatch && hunkMatch[1]) {
-          const lineNumber = parseInt(hunkMatch[1], 10);
+          hunkStartLine = parseInt(hunkMatch[1], 10);
+          inHunk = true;
           
           const content = this.getFileContent(currentFilePath); 
-          if (!content) continue;
+          if (!content) {
+            inHunk = false;
+            continue;
+          }
 
-          const charIndex = this.convertLineToCharIndex(content, lineNumber);
+          const charIndex = this.convertLineToCharIndex(content, hunkStartLine);
 
           const entityMap = this.topEntitiesMap.get(currentFilePath);
-          if (!entityMap) continue; 
+          if (!entityMap) {
+            inHunk = false;
+            continue;
+          } 
 
-          const entity = this.findEntityAtPosition(entityMap, charIndex);
-
-          if (entity) {
-            const key = `${currentFilePath}#${entity.fn}`;
+          // First, check if any newly added lines contain function definitions
+          // This handles cases where a new function is added
+          let foundNewFunction = false;
+          
+          // Read ahead in the hunk to find function definitions in added lines
+          let currentLineIndex = diffLines.indexOf(line);
+          let relativeLineNumber = hunkStartLine;
+          
+          for (let i = currentLineIndex + 1; i < diffLines.length && i < currentLineIndex + 50; i++) {
+            const hunkLine = diffLines[i];
+            if (!hunkLine) break;
             
-            if (!changedEntities.has(key)) {
-              changedEntities.set(key, {
-                fn: entity.fn,
-                path: currentFilePath
-              });
+            // Stop if we hit the next hunk or file header
+            if (hunkLine.startsWith('@@') || hunkLine.startsWith('+++') || hunkLine.startsWith('---')) {
+              break;
+            }
+            
+            // Check for added lines (new function definitions)
+            if (hunkLine.startsWith('+') && !hunkLine.startsWith('+++')) {
+              const addedLine = hunkLine.substring(1);
+              
+              // Check if this line contains a function definition
+              if (this.isFunctionDefinitionLine(addedLine)) {
+                // Extract function name from the line
+                const functionName = this.extractFunctionName(addedLine);
+                if (functionName) {
+                  // Find the entity with this name
+                  const newEntity = entityMap.funcs.find(e => e.fn === functionName);
+                  if (newEntity) {
+                    const key = `${currentFilePath}#${newEntity.fn}`;
+                    if (!changedEntities.has(key)) {
+                      changedEntities.set(key, {
+                        fn: newEntity.fn,
+                        path: currentFilePath
+                      });
+                      foundNewFunction = true;
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Track line numbers for context
+            if (!hunkLine.startsWith('-') || hunkLine.startsWith('---')) {
+              relativeLineNumber++;
+            }
+          }
+          
+          // If we didn't find a new function definition, use the original logic
+          if (!foundNewFunction) {
+            const entity = this.findEntityAtPosition(entityMap, charIndex);
+
+            if (entity) {
+              const key = `${currentFilePath}#${entity.fn}`;
+              
+              if (!changedEntities.has(key)) {
+                changedEntities.set(key, {
+                  fn: entity.fn,
+                  path: currentFilePath
+                });
+              }
             }
           }
         }

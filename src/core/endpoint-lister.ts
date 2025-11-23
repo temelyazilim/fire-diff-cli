@@ -148,18 +148,23 @@ export class EndPointLister {
         if (arg && ts.isStringLiteral(arg)) {
           const groupName = node.expression.left.name.text;
           const requirePath = arg.text;
-          const absolutePath = path.resolve(indexDir, requirePath);
-          this.deploymentNameMap.set(absolutePath, groupName);
+          // Resolve to absolute path and normalize (remove .ts extension for matching)
+          // TypeScript require paths don't include .ts extension, so we add it
+          let absolutePath = path.resolve(indexDir, requirePath);
+          if (!absolutePath.endsWith('.ts')) {
+            absolutePath = absolutePath + '.ts';
+          }
+          // Normalize path (remove extension for map key to match getDeployName logic)
+          const parsedPath = path.parse(absolutePath);
+          const pathWithoutExtension = path.resolve(parsedPath.dir, parsedPath.name);
+          this.deploymentNameMap.set(pathWithoutExtension, groupName);
         }
       }
 
       // V2/ESM Notation: export * from './path'
-      if (ts.isExportDeclaration(node) && !node.exportClause && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
-        const requirePath = node.moduleSpecifier.text; 
-        const groupName = path.basename(requirePath); 
-        const absolutePath = path.resolve(indexDir, requirePath);
-        this.deploymentNameMap.set(absolutePath, groupName);
-      }
+      // Note: export * from does NOT use group names - functions are exported directly
+      // So we don't add these to the deployment map (they will use function name as-is)
+      // This is intentionally left empty - export * from files should not have prefixes
     });
   }
 

@@ -188,6 +188,21 @@ The tool will:
 
 ## Changelog
 
+### [1.0.4] - 2025-11-23
+
+#### Fixed
+- **New function detection**: Now correctly identifies newly added functions instead of incorrectly marking previous functions as changed
+- **Export prefix handling**: Fixed issue where `export * from './path'` was incorrectly adding file name as prefix (e.g., `endpoints-createGathering`). Now uses function name directly (e.g., `createGathering`)
+- **Path resolution**: Fixed `exports.gf = require(...)` path resolution issue that was preventing correct deployment name generation
+- **Named exports**: Fixed issue where all functions in a file were reported as changed when only specific functions were exported via `export { name } from './path'`. Now only reports the actually changed functions
+- **Wildcard exports**: Fixed issue where all functions in a file were reported as changed when using `export * from './path'`. Now only reports the actually changed function
+
+#### Technical Improvements
+- Changed git diff from `--unified=0` to `--unified=3` to enable detection of newly added functions
+- Added function definition detection in git diff hunk content for newly added functions
+- Enhanced `findEntityAtPosition` to prioritize exact position matches for better accuracy
+- Improved re-export handling to only include exported functions in named exports
+
 ### [1.0.3] - 2025-11-22
 
 #### Fixed
