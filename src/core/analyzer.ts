@@ -9,6 +9,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import ts from 'typescript';
 import { getProjectFiles } from '../utils/file-system';
 import { findFilesImportingTarget } from './find-includes';
 import { fileTopFunctions } from './find-top-functions'; 
@@ -136,6 +137,8 @@ export class FaeptsAnalyzer {
   /**
    * Finds only the direct dependents (one level deep) for a given seed,
    * using the "block search" logic.
+   * Also handles re-exports: if a file re-exports the changed file,
+   * it directly adds endpoints from the re-exported file.
    * 
    * @param baseData Seed entity to find direct dependents for.
    * @returns Array of direct dependent entities (functions/classes that use the seed).
@@ -155,6 +158,43 @@ export class FaeptsAnalyzer {
     for (const affectedFilePath of importingFiles) {
       const fileContent = this.getFileContent(affectedFilePath);
       if (!fileContent) continue;
+
+      // Check if this file re-exports the target file
+      const reExportedPath = this.findReExportedPath(affectedFilePath, baseData.path);
+      if (reExportedPath) {
+        // If re-exported, directly add endpoints from the re-exported file
+        const reExportedEntityMap = this.topEntities.find(e => e.path === reExportedPath);
+        if (reExportedEntityMap) {
+          const reExportedFileContent = this.getFileContent(reExportedPath);
+          if (reExportedFileContent) {
+            const sortedEntities = reExportedEntityMap.funcs;
+            for (let i = 0; i < sortedEntities.length; i++) {
+              const entity = sortedEntities[i];
+              if (!entity) continue;
+              
+              const start = entity.start;
+              const nextEntity = sortedEntities[i + 1];
+              const end = nextEntity ? nextEntity.start : reExportedFileContent.length;
+              
+              const blockContent = reExportedFileContent.substring(start, end);
+              const endpointInfo = getEndpointInfo(blockContent);
+              
+              if (endpointInfo.isEndpoint === true) {
+                const tmpFunc = {
+                  fn: entity.fn,
+                  path: reExportedPath
+                };
+                
+                if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
+                  this.endPoints.push(tmpFunc);
+                }
+                
+                affectedFunctions.push(tmpFunc);
+              }
+            }
+          }
+        }
+      }
 
       const entityMap = this.topEntities.find(e => e.path === affectedFilePath);
       if (!entityMap) continue;
@@ -199,5 +239,71 @@ export class FaeptsAnalyzer {
     }
     
     return Array.from(uniqueResults.values());
+  }
+
+  /**
+   * Checks if a file re-exports the target file.
+   * Returns the absolute path of the re-exported file if found, null otherwise.
+   * 
+   * @param filePath The file to check for re-exports.
+   * @param targetPath The target file path that should be re-exported.
+   * @returns The absolute path of the re-exported file, or null if not found.
+   */
+  private findReExportedPath(filePath: string, targetPath: string): string | null {
+    const fileContent = this.getFileContent(filePath);
+    if (!fileContent) return null;
+
+    let sourceFile: ts.SourceFile;
+    try {
+      sourceFile = ts.createSourceFile(
+        filePath,
+        fileContent,
+        ts.ScriptTarget.ESNext
+      );
+    } catch (e) {
+      return null;
+    }
+
+    const fileDir = path.dirname(filePath);
+    const targetPathWithoutExt = targetPath.replace(/\.ts$/, '');
+    const targetPathNormalized = path.normalize(targetPathWithoutExt).replace(/\\/g, '/');
+
+    let reExportedPath: string | null = null;
+
+    function searchNode(node: ts.Node) {
+      if (reExportedPath) return;
+
+      // Check for export * from './path' or export { name } from './path'
+      if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+        if (ts.isStringLiteral(node.moduleSpecifier)) {
+          const exportPath = node.moduleSpecifier.text;
+          
+          // Try with .ts extension
+          let resolvedPath = path.resolve(fileDir, exportPath + '.ts');
+          let resolvedPathNormalized = path.normalize(resolvedPath.replace(/\.ts$/, '')).replace(/\\/g, '/');
+          
+          if (resolvedPathNormalized === targetPathNormalized) {
+            reExportedPath = targetPath;
+            return;
+          }
+          
+          // Try without extension (if exportPath already has it)
+          resolvedPath = path.resolve(fileDir, exportPath);
+          resolvedPathNormalized = path.normalize(resolvedPath.replace(/\.ts$/, '')).replace(/\\/g, '/');
+          
+          if (resolvedPathNormalized === targetPathNormalized) {
+            reExportedPath = targetPath;
+            return;
+          }
+        }
+      }
+
+      if (!reExportedPath) {
+        ts.forEachChild(node, searchNode);
+      }
+    }
+
+    searchNode(sourceFile);
+    return reExportedPath;
   }
 }

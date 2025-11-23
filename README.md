@@ -10,6 +10,7 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 📋 **List All Endpoints**: List all Firebase Functions endpoints in your project
 - 📄 **JSON Output Support**: Export endpoint lists in structured JSON format
 - 🔄 **Firebase V1/V2 Support**: Automatically detects and distinguishes between Firebase Functions V1 and V2
+- 🔗 **Re-export Support**: Correctly tracks endpoints exported via `export * from` and `export { } from` statements
 - ⚡ **Fast**: Uses caching and efficient dependency traversal
 - 🎯 **TypeScript Support**: Built for TypeScript projects
 
@@ -186,6 +187,18 @@ The tool will:
 4. **Deployment Mapping**: Maps affected functions to deployment groups based on your `index.ts` structure
 
 ## Changelog
+
+### [1.0.3] - 2025-11-22
+
+#### Fixed
+- **Re-export support**: Now correctly detects affected endpoints when files are re-exported through `index.ts` or other files
+- Fixed issue where endpoints exported via `export * from './path'` or `export { name } from './path'` were not detected in dependency analysis
+- Improved dependency tracking for re-exported modules
+
+#### Technical Improvements
+- Enhanced `findFilesImportingTarget` to track re-export statements (`export * from`, `export { } from`)
+- Added `findReExportedPath` method to analyzer for detecting re-export relationships
+- Re-exported endpoints are now directly added to affected endpoints list when source files change
 
 ### [1.0.2] - 2025-11-14
 

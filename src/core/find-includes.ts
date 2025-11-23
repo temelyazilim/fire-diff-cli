@@ -2,7 +2,8 @@
  * Import dependency finder module.
  * 
  * This module provides functionality to find all source files that import
- * a specific target file, supporting ES6 imports, CommonJS require, and dynamic imports.
+ * or re-export a specific target file, supporting ES6 imports, CommonJS require,
+ * dynamic imports, and re-exports (export * from, export { } from).
  * 
  * @module core/find-includes
  */
@@ -12,7 +13,7 @@ import path from 'path';
 import ts from 'typescript';
 
 /**
- * Finds all source files that import a specific target file.
+ * Finds all source files that import or re-export a specific target file.
  * This function operates *entirely* on paths relative to the projectRoot,
  * avoiding absolute path comparison issues by normalizing all paths
  * before comparison.
@@ -20,7 +21,7 @@ import ts from 'typescript';
  * @param targetFileRelativePath The path to the target file, *relative* to the project root.
  * @param projectRoot The *absolute* path to the project root.
  * @param allSourceFiles An array of *absolute* paths to all .ts files to search through.
- * @returns An array of *absolute* file paths (string[]) that import the target file.
+ * @returns An array of *absolute* file paths (string[]) that import or re-export the target file.
  */
 export function findFilesImportingTarget(
   targetFileRelativePath: string,
@@ -102,6 +103,23 @@ export function findFilesImportingTarget(
         const arg = node.arguments[0];
         if (arg && ts.isStringLiteral(arg)) {
           importString = arg.text;
+        }
+      }
+      // Case 4: Re-export (export * from './path')
+      if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+        if (ts.isStringLiteral(node.moduleSpecifier)) {
+          importString = node.moduleSpecifier.text;
+        }
+      }
+      // Case 5: Named re-export (export { name } from './path')
+      if (
+        ts.isExportDeclaration(node) &&
+        node.exportClause &&
+        ts.isNamedExports(node.exportClause) &&
+        node.moduleSpecifier
+      ) {
+        if (ts.isStringLiteral(node.moduleSpecifier)) {
+          importString = node.moduleSpecifier.text;
         }
       }
 
