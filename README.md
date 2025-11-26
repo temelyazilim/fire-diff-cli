@@ -13,6 +13,41 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 🔗 **Re-export Support**: Correctly tracks endpoints exported via `export * from` and `export { } from` statements
 - ⚡ **Fast**: Uses caching and efficient dependency traversal
 - 🎯 **TypeScript Support**: Built for TypeScript projects
+- 🎯 **Granular Property Tracking**: Detects changes to specific object properties and only affects functions using those properties
+
+## What's New in v1.0.5
+
+### 🎯 Object Property Dependency Tracking
+
+**fire-diff** now intelligently tracks changes to individual object properties! When you modify a single property in an object (e.g., `GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS`), only functions that actually use that specific property are marked as affected.
+
+**Example:**
+```typescript
+// constants.ts
+export const GATHERING_FIELD_KEYS = {
+  CREATOR: "cre",
+  LAST_UPDATE_OPTIONS: "luo",  // ← Only this property changed
+} as const;
+
+// session.ts
+export const setSessionOptionsChanged = async (...) => {
+  // Uses GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS
+  const ref = sessionDb().ref(`.../${GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS}`)
+  // ✅ This function WILL be affected
+};
+
+// gathering.ts
+export const onGatheringCreated = onValueCreated(..., async (event) => {
+  // Uses GATHERING_FIELD_KEYS.CREATOR
+  const creator = snapshot.child(`${GATHERING_FIELD_KEYS.CREATOR}`);
+  // ✅ This function will NOT be affected (different property)
+});
+```
+
+**Benefits:**
+- ✅ **Reduced false positives**: No more unnecessary deployments when unrelated properties change
+- ✅ **Precise tracking**: AST-based analysis ensures accurate property usage detection
+- ✅ **Backward compatible**: Regular variables (e.g., `DEFAULT_LIMIT = 3`) continue to work as before
 
 ## Installation
 
@@ -187,6 +222,22 @@ The tool will:
 4. **Deployment Mapping**: Maps affected functions to deployment groups based on your `index.ts` structure
 
 ## Changelog
+
+### [1.0.5] - 2025-11-24
+
+#### Added
+- **Object property dependency tracking**: Now detects changes to specific object properties (e.g., `GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS`) and only marks functions that use that specific property as affected
+- **Granular property change detection**: When only a single property in an object changes, only functions using that property are affected, not all functions using the object
+
+#### Fixed
+- **False positive detection**: Fixed issue where changing one property in an object (e.g., `LAST_UPDATE_OPTIONS`) incorrectly marked all functions using any property from that object (e.g., `CREATOR`) as affected
+- Now correctly identifies which specific property changed and only affects functions using that property
+
+#### Technical Improvements
+- Added `detectObjectPropertyChange` method in `git-analyzer.ts` to identify object property changes from git diff
+- Added `usesProperty` method in `analyzer.ts` using AST to accurately detect property usage in code blocks
+- Enhanced dependency analysis to distinguish between property access (e.g., `OBJECT.PROPERTY`) and regular variable usage
+- Maintains backward compatibility: non-property variables (e.g., `DEFAULT_LIMIT = 3`) continue to work as before
 
 ### [1.0.4] - 2025-11-23
 

@@ -122,6 +122,72 @@ export class GitChangeAnalyzer {
   }
 
   /**
+   * Detects if a changed line is an object property and extracts the property path.
+   * 
+   * @param changedLine The line that was changed (with + or - prefix removed).
+   * @param fileContent Full content of the file to find parent object name.
+   * @param lineNumber 1-based line number of the changed line.
+   * @param entityMap File's entity map to find the containing entity.
+   * @returns Property path in format "OBJECT_NAME.PROPERTY_NAME" or null if not a property change.
+   */
+  private detectObjectPropertyChange(
+    changedLine: string, 
+    fileContent: string, 
+    lineNumber: number,
+    entityMap: FileFunctionsResult
+  ): string | null {
+    const trimmed = changedLine.trim();
+    
+    // Match object property pattern: PROPERTY_NAME: "value" or PROPERTY_NAME: value
+    // Examples: LAST_UPDATE_OPTIONS: "luo", CREATOR: "cre"
+    const propertyMatch = /^\s*(\w+)\s*:\s*/.exec(trimmed);
+    if (!propertyMatch || !propertyMatch[1]) {
+      return null;
+    }
+    
+    const propertyName = propertyMatch[1];
+    
+    // Find which entity contains this line
+    const lineCharIndex = this.convertLineToCharIndex(fileContent, lineNumber);
+    const containingEntity = this.findEntityAtPosition(entityMap, lineCharIndex);
+    
+    if (!containingEntity) {
+      return null;
+    }
+    
+    // Get the entity's content block
+    const sortedEntities = entityMap.funcs;
+    const entityIndex = sortedEntities.indexOf(containingEntity);
+    const start = containingEntity.start;
+    const nextEntity = sortedEntities[entityIndex + 1];
+    const end = nextEntity ? nextEntity.start : fileContent.length;
+    const entityContent = fileContent.substring(start, end);
+    
+    // Check if this entity is an object declaration (const OBJECT_NAME = { ... })
+    const objectDeclMatch = /(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*\{/.exec(entityContent);
+    if (!objectDeclMatch || !objectDeclMatch[1]) {
+      return null;
+    }
+    
+    const objectName = objectDeclMatch[1];
+    
+    // Verify that the property is actually in this object by checking if it's within the object's braces
+    // Simple check: if the property line appears after the opening brace
+    const objectStartIndex = entityContent.indexOf('{');
+    if (objectStartIndex === -1) {
+      return null;
+    }
+    
+    // Check if the changed line is within the object (after the opening brace)
+    const relativeLineIndex = lineCharIndex - start;
+    if (relativeLineIndex > objectStartIndex) {
+      return `${objectName}.${propertyName}`;
+    }
+    
+    return null;
+  }
+
+  /**
    * Finds the top-level entity that contains a given character position.
    * 
    * @param entityMap File's entity map containing all top-level entities.
@@ -217,10 +283,11 @@ export class GitChangeAnalyzer {
           // First, check if any newly added lines contain function definitions
           // This handles cases where a new function is added
           let foundNewFunction = false;
+          let foundPropertyChange = false;
           
-          // Read ahead in the hunk to find function definitions in added lines
+          // Read ahead in the hunk to find function definitions and property changes in added lines
           let currentLineIndex = diffLines.indexOf(line);
-          let relativeLineNumber = hunkStartLine;
+          let currentLineNumber = hunkStartLine;
           
           for (let i = currentLineIndex + 1; i < diffLines.length && i < currentLineIndex + 50; i++) {
             const hunkLine = diffLines[i];
@@ -231,12 +298,30 @@ export class GitChangeAnalyzer {
               break;
             }
             
-            // Check for added lines (new function definitions)
+            // Track line numbers: only increment for context lines (starting with space) and added lines (+)
+            // Deleted lines (-) don't increment the line number in the new file
             if (hunkLine.startsWith('+') && !hunkLine.startsWith('+++')) {
+              // This is an added line in the new file
               const addedLine = hunkLine.substring(1);
               
+              // First, check if this is an object property change
+              if (!foundPropertyChange) {
+                const propertyPath = this.detectObjectPropertyChange(addedLine, content, currentLineNumber, entityMap);
+                if (propertyPath) {
+                  // Found a property change, mark it as changed
+                  const key = `${currentFilePath}#${propertyPath}`;
+                  if (!changedEntities.has(key)) {
+                    changedEntities.set(key, {
+                      fn: propertyPath,
+                      path: currentFilePath
+                    });
+                    foundPropertyChange = true;
+                  }
+                }
+              }
+              
               // Check if this line contains a function definition
-              if (this.isFunctionDefinitionLine(addedLine)) {
+              if (!foundNewFunction && this.isFunctionDefinitionLine(addedLine)) {
                 // Extract function name from the line
                 const functionName = this.extractFunctionName(addedLine);
                 if (functionName) {
@@ -254,16 +339,17 @@ export class GitChangeAnalyzer {
                   }
                 }
               }
+              
+              currentLineNumber++;
+            } else if (hunkLine.startsWith(' ')) {
+              // Context line (unchanged), increment line number
+              currentLineNumber++;
             }
-            
-            // Track line numbers for context
-            if (!hunkLine.startsWith('-') || hunkLine.startsWith('---')) {
-              relativeLineNumber++;
-            }
+            // Deleted lines (-) don't increment the line number
           }
           
-          // If we didn't find a new function definition, use the original logic
-          if (!foundNewFunction) {
+          // If we didn't find a new function definition or property change, use the original logic
+          if (!foundNewFunction && !foundPropertyChange) {
             const entity = this.findEntityAtPosition(entityMap, charIndex);
 
             if (entity) {

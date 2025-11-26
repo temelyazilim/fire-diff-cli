@@ -257,20 +257,43 @@ export class FaeptsAnalyzer {
 
         const blockContent = fileContent.substring(start, end);
         
-        if (blockContent.includes(baseData.fn)) {
-          const endpointInfo = getEndpointInfo(blockContent);
-          const tmpFunc = {
-            fn: currentEntity.fn,
-            path: affectedFilePath
-          };
-          
-          if (endpointInfo.isEndpoint === true) {
-             if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
-               this.endPoints.push(tmpFunc);
-             }
+        // Check if baseData.fn is a property access (e.g., GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS)
+        const isPropertyAccess = baseData.fn.includes('.');
+        
+        if (isPropertyAccess) {
+          // Use AST to check if this specific property is used in the block
+          if (this.usesProperty(blockContent, baseData.fn)) {
+            const endpointInfo = getEndpointInfo(blockContent);
+            const tmpFunc = {
+              fn: currentEntity.fn,
+              path: affectedFilePath
+            };
+            
+            if (endpointInfo.isEndpoint === true) {
+               if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
+                 this.endPoints.push(tmpFunc);
+               }
+            }
+            
+            affectedFunctions.push(tmpFunc);
           }
-          
-          affectedFunctions.push(tmpFunc);
+        } else {
+          // For non-property changes (e.g., DEFAULT_LIMIT), use the original string matching
+          if (blockContent.includes(baseData.fn)) {
+            const endpointInfo = getEndpointInfo(blockContent);
+            const tmpFunc = {
+              fn: currentEntity.fn,
+              path: affectedFilePath
+            };
+            
+            if (endpointInfo.isEndpoint === true) {
+               if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
+                 this.endPoints.push(tmpFunc);
+               }
+            }
+            
+            affectedFunctions.push(tmpFunc);
+          }
         }
       }
     }
@@ -282,6 +305,74 @@ export class FaeptsAnalyzer {
     }
     
     return Array.from(uniqueResults.values());
+  }
+
+  /**
+   * Checks if a code block uses a specific property access (e.g., GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS).
+   * Uses AST to accurately detect property usage.
+   * 
+   * @param blockContent The code block content to analyze.
+   * @param propertyPath The property path in format "OBJECT_NAME.PROPERTY_NAME".
+   * @returns True if the property is used in the block, false otherwise.
+   */
+  private usesProperty(blockContent: string, propertyPath: string): boolean {
+    const [objectName, propertyName] = propertyPath.split('.');
+    if (!objectName || !propertyName) {
+      return false;
+    }
+
+    let sourceFile: ts.SourceFile;
+    try {
+      // Create a temporary source file for AST analysis
+      sourceFile = ts.createSourceFile(
+        'temp.ts',
+        blockContent,
+        ts.ScriptTarget.ESNext,
+        true
+      );
+    } catch (e) {
+      // If AST parsing fails, fall back to string matching
+      return blockContent.includes(propertyPath);
+    }
+
+    let foundPropertyUsage = false;
+
+    function visitNode(node: ts.Node) {
+      if (foundPropertyUsage) return;
+
+      // Check for property access: OBJECT_NAME.PROPERTY_NAME
+      if (ts.isPropertyAccessExpression(node)) {
+        const expression = node.expression;
+        const name = node.name;
+
+        if (ts.isIdentifier(expression) && ts.isIdentifier(name)) {
+          if (expression.text === objectName && name.text === propertyName) {
+            foundPropertyUsage = true;
+            return;
+          }
+        }
+      }
+
+      // Check for element access: OBJECT_NAME["PROPERTY_NAME"] or OBJECT_NAME['PROPERTY_NAME']
+      if (ts.isElementAccessExpression(node)) {
+        const expression = node.expression;
+        const argumentExpression = node.argumentExpression;
+
+        if (ts.isIdentifier(expression) && expression.text === objectName) {
+          if (ts.isStringLiteral(argumentExpression)) {
+            if (argumentExpression.text === propertyName) {
+              foundPropertyUsage = true;
+              return;
+            }
+          }
+        }
+      }
+
+      ts.forEachChild(node, visitNode);
+    }
+
+    visitNode(sourceFile);
+    return foundPropertyUsage;
   }
 
   /**
