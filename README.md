@@ -15,6 +15,33 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 🎯 **TypeScript Support**: Built for TypeScript projects
 - 🎯 **Granular Property Tracking**: Detects changes to specific object properties and only affects functions using those properties
 
+## What's New in v1.0.6
+
+### 🆕 New File Detection
+
+**fire-diff** now automatically detects functions in newly created files! When you add a new TypeScript file with Firebase Cloud Functions, all functions in that file are automatically included in the affected endpoints list.
+
+**Example:**
+```typescript
+// src/user/triggers.ts (new file)
+export const onUserInfoWritten = onValueWritten(...);
+// ✅ Automatically detected and included in affected endpoints
+```
+
+### 📁 Multiple Functions Directories Support
+
+**fire-diff** now supports Firebase projects with multiple functions directories! When your `firebase.json` contains an array of function configurations, the tool automatically scans all configured function source directories.
+
+**Benefits:**
+- ✅ **Multi-project support**: Works with projects that have separate function directories (e.g., `functions`, `functions-v2`)
+- ✅ **Automatic detection**: Reads `firebase.json` to identify all function source directories
+- ✅ **Smart scanning**: Only scans configured directories, ignoring external packages like `node_modules`
+
+### 🔍 Improved File Scanning
+
+- **Better ignore patterns**: Now correctly ignores `node_modules` at any directory level
+- **Project-aware scanning**: Respects Firebase project structure and only scans relevant directories
+
 ## What's New in v1.0.5
 
 ### 🎯 Object Property Dependency Tracking
@@ -222,6 +249,24 @@ The tool will:
 4. **Deployment Mapping**: Maps affected functions to deployment groups based on your `index.ts` structure
 
 ## Changelog
+
+### [1.0.6] - 2025-01-15
+
+#### Added
+- **New file detection**: Now automatically detects and includes all functions from newly created (untracked) TypeScript files
+- **Multiple functions directories support**: Automatically detects and scans all function source directories configured in `firebase.json` when using array format
+- **Improved file scanning**: Enhanced `getSourceFiles` to correctly ignore `node_modules` at any directory level using `**/node_modules/**` pattern
+
+#### Fixed
+- **File scanning scope**: Fixed issue where `node_modules` within function directories were being scanned when running from project root
+- **New file detection**: Fixed issue where functions in newly created files were not being detected in the affected endpoints list
+
+#### Technical Improvements
+- Added `findNewFileEntities` method in `git-analyzer.ts` to parse and extract functions from untracked files
+- Enhanced `getChangedEntities` to use `git status --porcelain` for detecting new files
+- Added `findFirebaseConfig` and `getFunctionsSources` functions in `file-system.ts` to support multiple function directories
+- Updated `getProjectFiles` to read `firebase.json` and scan all configured function source directories separately
+- Improved ignore patterns in `getSourceFiles` to use glob patterns that work at any directory level
 
 ### [1.0.5] - 2025-11-24
 

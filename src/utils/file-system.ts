@@ -9,6 +9,7 @@
 
 import { globSync } from 'glob';
 import path from 'path';
+import fs from 'fs';
 
 /**
  * (Internal Worker Function)
@@ -23,12 +24,13 @@ function getSourceFiles(projectPath: string): string[] {
   const tsFilePattern = path.join(projectPath, '**/*.ts');
 
   // Patterns to ignore common build, dependency, and test directories/files
+  // Use **/ pattern to ignore at any directory level
   const ignorePattern = [
-    path.join(projectPath, 'node_modules/**'), // Ignore dependencies
-    path.join(projectPath, 'dist/**'),          // Ignore built output
-    path.join(projectPath, 'src/__tests__/**'), // Ignore __tests__ directory (as requested)
-    path.join(projectPath, '**/*.test.ts'),     // Ignore files ending in .test.ts
-    path.join(projectPath, '**/*.spec.ts'),     // Ignore files ending in .spec.ts
+    '**/node_modules/**',  // Ignore dependencies at any level
+    '**/dist/**',          // Ignore built output at any level
+    '**/src/__tests__/**', // Ignore __tests__ directory at any level
+    '**/*.test.ts',       // Ignore files ending in .test.ts
+    '**/*.spec.ts',       // Ignore files ending in .spec.ts
   ];
 
   const allFiles = globSync(tsFilePattern, {
@@ -40,23 +42,105 @@ function getSourceFiles(projectPath: string): string[] {
 }
 
 /**
+ * Finds firebase.json file starting from the current working directory
+ * and searching upward in the directory tree.
+ *
+ * @returns An object with configPath and firebaseRoot, or null if not found.
+ */
+function findFirebaseConfig(): { configPath: string; firebaseRoot: string } | null {
+  let currentDir = process.cwd();
+  const root = path.parse(currentDir).root;
+
+  while (currentDir !== root) {
+    const configPath = path.join(currentDir, 'firebase.json');
+    if (fs.existsSync(configPath)) {
+      return {
+        configPath,
+        firebaseRoot: currentDir,
+      };
+    }
+    currentDir = path.dirname(currentDir);
+  }
+
+  return null;
+}
+
+/**
+ * Extracts function source directories from firebase.json configuration.
+ *
+ * @param firebaseConfig The parsed firebase.json object.
+ * @param firebaseRoot The absolute path to the Firebase project root.
+ * @returns An array of absolute paths to function source directories.
+ */
+function getFunctionsSources(firebaseConfig: any, firebaseRoot: string): string[] {
+  const sources: string[] = [];
+
+  if (Array.isArray(firebaseConfig.functions)) {
+    // Multiple functions directories
+    for (const funcConfig of firebaseConfig.functions) {
+      if (funcConfig.source) {
+        const sourcePath = path.resolve(firebaseRoot, funcConfig.source);
+        if (fs.existsSync(sourcePath)) {
+          sources.push(sourcePath);
+        }
+      }
+    }
+  } else if (firebaseConfig.functions?.source) {
+    // Single functions directory
+    const sourcePath = path.resolve(firebaseRoot, firebaseConfig.functions.source);
+    if (fs.existsSync(sourcePath)) {
+      sources.push(sourcePath);
+    }
+  }
+
+  return sources;
+}
+
+/**
  * Gets the project's absolute root path ("World") AND a list of all
  * .ts files within that world.
  *
- * The "World" (projectRoot) is assumed to be the Current Working Directory
- * (process.cwd()) from which the 'faepts' command is executed.
+ * The function first tries to find firebase.json to determine function
+ * source directories. If found and contains multiple function sources,
+ * it scans each one separately. Otherwise, it uses the current working
+ * directory as the project root.
  *
  * @returns An object: { projectRoot: string, allFiles: string[] }
  */
 export function getProjectFiles(): { projectRoot: string; allFiles: string[] } {
-  
-  // 1. The "World" (Project Root) is the directory where the command is run.
+  const configInfo = findFirebaseConfig();
+
+  // If firebase.json exists, check for multiple function sources
+  if (configInfo) {
+    try {
+      const configContent = fs.readFileSync(configInfo.configPath, 'utf8');
+      const firebaseConfig = JSON.parse(configContent);
+
+      const functionSources = getFunctionsSources(firebaseConfig, configInfo.firebaseRoot);
+
+      if (functionSources.length > 0) {
+        // Scan each function source directory separately
+        const allFiles: string[] = [];
+        for (const sourcePath of functionSources) {
+          const files = getSourceFiles(sourcePath);
+          allFiles.push(...files);
+        }
+
+        // Use the first function source as projectRoot (for backward compatibility)
+        // or use firebaseRoot if no sources found
+        const projectRoot = functionSources[0] || configInfo.firebaseRoot;
+
+        return { projectRoot, allFiles };
+      }
+    } catch (e) {
+      // If parsing fails, fall through to default behavior
+    }
+  }
+
+  // Default behavior: use current working directory
   const projectRoot = process.cwd();
-  
-  // 2. Find all files within that "World".
   const allFiles = getSourceFiles(projectRoot);
 
-  // 3. Return both the "World" and the "Files".
   return { projectRoot, allFiles };
 }
 
