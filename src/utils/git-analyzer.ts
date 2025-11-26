@@ -11,6 +11,7 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AnalysisSeed, FileFunctionsResult, TopLevelEntity } from '../core/types';
+import { fileTopFunctions } from '../core/find-top-functions';
 
 /**
  * Analyzes 'git diff' output against the pre-built entity map
@@ -224,6 +225,34 @@ export class GitChangeAnalyzer {
   }
 
   /**
+   * Finds all entities (functions, classes, etc.) in new files.
+   * 
+   * @param newFiles Array of absolute file paths for new files.
+   * @returns Array of AnalysisSeed objects for all entities found in new files.
+   */
+  private findNewFileEntities(newFiles: string[]): AnalysisSeed[] {
+    const entities: AnalysisSeed[] = [];
+    
+    for (const filePath of newFiles) {
+      try {
+        const entityMap = fileTopFunctions(filePath);
+        if (entityMap && entityMap.funcs.length > 0) {
+          for (const entity of entityMap.funcs) {
+            entities.push({
+              fn: entity.fn,
+              path: filePath
+            });
+          }
+        }
+      } catch (e) {
+        // Skip if file cannot be read or parsed
+      }
+    }
+    
+    return entities;
+  }
+
+  /**
    * Runs 'git diff' and analyzes the output to find all changed entities.
    * 
    * @returns Array of changed entities (functions, classes, etc.) found in git diff.
@@ -365,6 +394,39 @@ export class GitChangeAnalyzer {
           }
         }
       }
+    }
+
+    // Detect new files and add their functions
+    const statusCommand = 'git status --porcelain -- "*.ts" ":(exclude)src/__tests__" ":(exclude)*.test.ts" ":(exclude)*.spec.ts"';
+    try {
+      const statusOutput = execSync(statusCommand, { cwd: this.projectRoot }).toString();
+      const statusLines = statusOutput.split('\n');
+      const newFiles: string[] = [];
+      
+      for (const line of statusLines) {
+        if (line.startsWith('??')) {
+          let relativePath = line.substring(3).trim();
+          if (relativePath) {
+            // If path starts with projectRoot's basename (e.g., "functions/..."), remove it
+            const rootBasename = path.basename(this.projectRoot);
+            if (relativePath.startsWith(`${rootBasename}/`)) {
+              relativePath = relativePath.substring(rootBasename.length + 1);
+            }
+            newFiles.push(path.join(this.projectRoot, relativePath));
+          }
+        }
+      }
+      
+      // Find and add functions from new files
+      const newFileEntities = this.findNewFileEntities(newFiles);
+      for (const entity of newFileEntities) {
+        const key = `${entity.path}#${entity.fn}`;
+        if (!changedEntities.has(key)) {
+          changedEntities.set(key, entity);
+        }
+      }
+    } catch (e) {
+      // Silently continue on error
     }
 
     return Array.from(changedEntities.values());
