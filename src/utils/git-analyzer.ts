@@ -377,18 +377,54 @@ export class GitChangeAnalyzer {
             // Deleted lines (-) don't increment the line number
           }
           
-          // If we didn't find a new function definition or property change, use the original logic
+          // If we didn't find a new function definition or property change, 
+          // check all changed lines in the hunk to find which function contains the changes
           if (!foundNewFunction && !foundPropertyChange) {
-            const entity = this.findEntityAtPosition(entityMap, charIndex);
-
-            if (entity) {
-              const key = `${currentFilePath}#${entity.fn}`;
+            // Collect all line numbers that have changes (added lines only, as they exist in the new file)
+            const changedLineNumbers = new Set<number>();
+            
+            // Re-scan the hunk to collect all changed line positions
+            let scanLineIndex = diffLines.indexOf(line);
+            let scanLineNumber = hunkStartLine;
+            
+            for (let i = scanLineIndex + 1; i < diffLines.length && i < scanLineIndex + 50; i++) {
+              const hunkLine = diffLines[i];
+              if (!hunkLine) break;
               
-              if (!changedEntities.has(key)) {
-                changedEntities.set(key, {
-                  fn: entity.fn,
-                  path: currentFilePath
-                });
+              // Stop if we hit the next hunk or file header
+              if (hunkLine.startsWith('@@') || hunkLine.startsWith('+++') || hunkLine.startsWith('---')) {
+                break;
+              }
+              
+              // Track added lines (they exist in the new file, so position calculation is correct)
+              // Also track deleted lines by using the current line number (approximate but works for finding containing function)
+              if (hunkLine.startsWith('+') && !hunkLine.startsWith('+++')) {
+                changedLineNumbers.add(scanLineNumber);
+                scanLineNumber++;
+              } else if (hunkLine.startsWith('-') && !hunkLine.startsWith('---')) {
+                // For deleted lines, use the current line number (approximate position in new file)
+                // This helps find the function that contains the deleted content
+                changedLineNumbers.add(scanLineNumber);
+                // Don't increment for deleted lines in new file
+              } else if (hunkLine.startsWith(' ')) {
+                scanLineNumber++;
+              }
+            }
+            
+            // Check each changed line to find the containing function
+            for (const lineNum of changedLineNumbers) {
+              const lineCharIndex = this.convertLineToCharIndex(content, lineNum);
+              const entity = this.findEntityAtPosition(entityMap, lineCharIndex);
+              
+              if (entity) {
+                const key = `${currentFilePath}#${entity.fn}`;
+                
+                if (!changedEntities.has(key)) {
+                  changedEntities.set(key, {
+                    fn: entity.fn,
+                    path: currentFilePath
+                  });
+                }
               }
             }
           }

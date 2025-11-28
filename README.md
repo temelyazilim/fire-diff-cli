@@ -15,6 +15,53 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 🎯 **TypeScript Support**: Built for TypeScript projects
 - 🎯 **Granular Property Tracking**: Detects changes to specific object properties and only affects functions using those properties
 
+## What's New in v1.0.7
+
+### 🔧 Function Content Change Detection
+
+**fire-diff** now correctly detects changes within existing functions! Previously, when you modified function content (e.g., changing `timeoutSeconds`, removing `minInstances`), the tool might miss these changes if the function definition line itself wasn't modified.
+
+**Example:**
+```typescript
+// Before
+export const makeMoveV2 = onCall({
+    cors: false,
+    minInstances: 1,
+    cpu: 1,
+    timeoutSeconds: 10
+}, async (request: any) => { ... });
+
+// After (minInstances and cpu removed)
+export const makeMoveV2 = onCall({
+    cors: false,
+    timeoutSeconds: 10
+}, async (request: any) => { ... });
+// ✅ Now correctly detected as changed
+```
+
+**Benefits:**
+- ✅ **Comprehensive detection**: Detects all changes within function bodies, not just function definitions
+- ✅ **Improved accuracy**: Scans all modified lines in git diff hunks to find containing functions
+- ✅ **No false negatives**: Functions with internal changes are now reliably detected
+
+### 🔗 CommonJS Re-export Support
+
+**fire-diff** now supports CommonJS re-exports! When functions are exported via `exports.groupName = require('./path')` in `index.ts`, the tool correctly tracks dependencies and detects affected endpoints.
+
+**Example:**
+```typescript
+// index.ts
+exports.gf = require('./exports/gamefunctions');
+
+// exports/gamefunctions.ts
+export const makeMoveV2 = onCall({ ... });
+// ✅ Changes to makeMoveV2 are now correctly detected
+```
+
+**Benefits:**
+- ✅ **CommonJS compatibility**: Works with both ES6 (`export * from`) and CommonJS (`exports.xxx = require()`) re-export patterns
+- ✅ **Complete coverage**: All re-export patterns are now supported
+
 ## What's New in v1.0.6
 
 ### 🆕 New File Detection
@@ -249,6 +296,17 @@ The tool will:
 4. **Deployment Mapping**: Maps affected functions to deployment groups based on your `index.ts` structure
 
 ## Changelog
+
+### [1.0.7] - 2025-01-15
+
+#### Fixed
+- **Function content change detection**: Now correctly detects changes within existing function bodies (e.g., modifying `timeoutSeconds`, removing `minInstances`) even when the function definition line itself isn't modified
+- **CommonJS re-export support**: Fixed issue where functions exported via `exports.groupName = require('./path')` in `index.ts` were not being tracked correctly
+
+#### Technical Improvements
+- Enhanced `getChangedEntities()` in `git-analyzer.ts` to scan all modified lines in git diff hunks (both `+` and `-` lines) to find containing functions
+- Added CommonJS export pattern detection in `findReExportedInfo()` method in `analyzer.ts` to support `exports.xxx = require()` re-exports
+- Improved hunk processing to check all changed lines, not just hunk start position
 
 ### [1.0.6] - 2025-01-15
 
