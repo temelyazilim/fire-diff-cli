@@ -297,6 +297,28 @@ The tool will:
 
 ## Changelog
 
+### [1.0.8] - 2025-01-16
+
+#### Fixed
+- **Same-file function dependency detection**: Fixed critical issue where functions in the same file were not being analyzed for dependencies. Previously, when a function like `logValidToken` changed, other functions in the same file (like `lpt`) that called it were not detected as affected
+- **Export-less function dependency tracking**: Now correctly tracks dependencies for non-exported functions (e.g., `async function lpt`) within the same file
+
+#### Technical Improvements
+- Removed overly restrictive check in `analyzer.ts` that skipped dependency analysis for functions in the same file as the changed function
+- Enhanced dependency analysis to include all functions in a file, not just the changed function itself
+- Improved accuracy of dependency chain tracking when functions call each other within the same file
+
+**Example Fix:**
+```typescript
+// Before: When logValidToken changed, lpt was not detected
+async function logValidToken(...) { ... }
+async function lpt(...) {
+  await logValidToken(...); // This dependency was missed
+}
+
+// After: lpt is now correctly detected as affected when logValidToken changes
+```
+
 ### [1.0.7] - 2025-01-15
 
 #### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "fire-diff",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "CLI tool to find affected Firebase Cloud Functions endpoints based on git changes",
   "keywords": [
     "firebase",

@@ -245,12 +245,6 @@ export class FaeptsAnalyzer {
         const currentEntity = sortedEntities[i];
         if (!currentEntity) continue;
 
-        // If this is the changed file itself, only check the changed function
-        // (not all functions in the file)
-        if (affectedFilePath === baseData.path && currentEntity.fn !== baseData.fn) {
-          continue;
-        }
-        
         const start = currentEntity.start;
         const nextEntity = sortedEntities[i + 1];
         const end = nextEntity ? nextEntity.start : fileContent.length; 
@@ -278,7 +272,8 @@ export class FaeptsAnalyzer {
             affectedFunctions.push(tmpFunc);
           }
         } else {
-          // For non-property changes (e.g., DEFAULT_LIMIT), use the original string matching
+          // For non-property changes, check if the function is called in this block
+          // This includes checking functions in the same file that call the changed function
           if (blockContent.includes(baseData.fn)) {
             const endpointInfo = getEndpointInfo(blockContent);
             const tmpFunc = {
