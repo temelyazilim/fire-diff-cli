@@ -15,6 +15,28 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 🎯 **TypeScript Support**: Built for TypeScript projects
 - 🎯 **Granular Property Tracking**: Detects changes to specific object properties and only affects functions using those properties
 
+## What's New in v1.0.8
+
+### 🔧 Same-File Function Dependency Detection
+
+**fire-diff** now correctly detects dependencies between functions in the same file! Previously, when a function like `logValidToken` changed, other functions in the same file (like `lpt`) that called it were not detected as affected.
+
+**Example:**
+```typescript
+// Before: When logValidToken changed, lpt was not detected
+async function logValidToken(...) { ... }
+async function lpt(...) {
+  await logValidToken(...); // This dependency was missed
+}
+
+// After: lpt is now correctly detected as affected when logValidToken changes
+```
+
+**Benefits:**
+- ✅ **Complete dependency tracking**: All function dependencies are now detected, even within the same file
+- ✅ **Export-less function support**: Non-exported functions (e.g., `async function lpt`) are now correctly tracked
+- ✅ **Improved accuracy**: No more missed dependencies when functions call each other in the same file
+
 ## What's New in v1.0.7
 
 ### 🔧 Function Content Change Detection
