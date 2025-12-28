@@ -209,7 +209,8 @@ export class FaeptsAnalyzer {
                 if (endpointInfo.isEndpoint === true) {
                   const tmpFunc = {
                     fn: changedEntity.fn,
-                    path: reExportInfo.path
+                    path: reExportInfo.path,
+                    version: endpointInfo.version
                   };
                   
                   if (!this.endPoints.some(e => e.path === tmpFunc.path && e.fn === tmpFunc.fn)) {
@@ -260,7 +261,8 @@ export class FaeptsAnalyzer {
             const endpointInfo = getEndpointInfo(blockContent);
             const tmpFunc = {
               fn: currentEntity.fn,
-              path: affectedFilePath
+              path: affectedFilePath,
+              version: endpointInfo.version
             };
             
             if (endpointInfo.isEndpoint === true) {
@@ -278,7 +280,8 @@ export class FaeptsAnalyzer {
             const endpointInfo = getEndpointInfo(blockContent);
             const tmpFunc = {
               fn: currentEntity.fn,
-              path: affectedFilePath
+              path: affectedFilePath,
+              version: endpointInfo.version
             };
             
             if (endpointInfo.isEndpoint === true) {

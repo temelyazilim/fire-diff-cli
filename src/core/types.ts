@@ -15,6 +15,8 @@ export interface AnalysisSeed {
     fn: string;
     /** The absolute path to the file containing this entity. */
     path: string;
+    /** The Firebase Functions version ('v1' or 'v2'), if this is an endpoint. */
+    version?: 'v1' | 'v2' | null;
 }
 
 /**

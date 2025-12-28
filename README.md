@@ -15,136 +15,6 @@ CLI tool to find affected Firebase Cloud Functions endpoints based on git change
 - 🎯 **TypeScript Support**: Built for TypeScript projects
 - 🎯 **Granular Property Tracking**: Detects changes to specific object properties and only affects functions using those properties
 
-## What's New in v1.0.8
-
-### 🔧 Same-File Function Dependency Detection
-
-**fire-diff** now correctly detects dependencies between functions in the same file! Previously, when a function like `logValidToken` changed, other functions in the same file (like `lpt`) that called it were not detected as affected.
-
-**Example:**
-```typescript
-// Before: When logValidToken changed, lpt was not detected
-async function logValidToken(...) { ... }
-async function lpt(...) {
-  await logValidToken(...); // This dependency was missed
-}
-
-// After: lpt is now correctly detected as affected when logValidToken changes
-```
-
-**Benefits:**
-- ✅ **Complete dependency tracking**: All function dependencies are now detected, even within the same file
-- ✅ **Export-less function support**: Non-exported functions (e.g., `async function lpt`) are now correctly tracked
-- ✅ **Improved accuracy**: No more missed dependencies when functions call each other in the same file
-
-## What's New in v1.0.7
-
-### 🔧 Function Content Change Detection
-
-**fire-diff** now correctly detects changes within existing functions! Previously, when you modified function content (e.g., changing `timeoutSeconds`, removing `minInstances`), the tool might miss these changes if the function definition line itself wasn't modified.
-
-**Example:**
-```typescript
-// Before
-export const makeMoveV2 = onCall({
-    cors: false,
-    minInstances: 1,
-    cpu: 1,
-    timeoutSeconds: 10
-}, async (request: any) => { ... });
-
-// After (minInstances and cpu removed)
-export const makeMoveV2 = onCall({
-    cors: false,
-    timeoutSeconds: 10
-}, async (request: any) => { ... });
-// ✅ Now correctly detected as changed
-```
-
-**Benefits:**
-- ✅ **Comprehensive detection**: Detects all changes within function bodies, not just function definitions
-- ✅ **Improved accuracy**: Scans all modified lines in git diff hunks to find containing functions
-- ✅ **No false negatives**: Functions with internal changes are now reliably detected
-
-### 🔗 CommonJS Re-export Support
-
-**fire-diff** now supports CommonJS re-exports! When functions are exported via `exports.groupName = require('./path')` in `index.ts`, the tool correctly tracks dependencies and detects affected endpoints.
-
-**Example:**
-```typescript
-// index.ts
-exports.gf = require('./exports/gamefunctions');
-
-// exports/gamefunctions.ts
-export const makeMoveV2 = onCall({ ... });
-// ✅ Changes to makeMoveV2 are now correctly detected
-```
-
-**Benefits:**
-- ✅ **CommonJS compatibility**: Works with both ES6 (`export * from`) and CommonJS (`exports.xxx = require()`) re-export patterns
-- ✅ **Complete coverage**: All re-export patterns are now supported
-
-## What's New in v1.0.6
-
-### 🆕 New File Detection
-
-**fire-diff** now automatically detects functions in newly created files! When you add a new TypeScript file with Firebase Cloud Functions, all functions in that file are automatically included in the affected endpoints list.
-
-**Example:**
-```typescript
-// src/user/triggers.ts (new file)
-export const onUserInfoWritten = onValueWritten(...);
-// ✅ Automatically detected and included in affected endpoints
-```
-
-### 📁 Multiple Functions Directories Support
-
-**fire-diff** now supports Firebase projects with multiple functions directories! When your `firebase.json` contains an array of function configurations, the tool automatically scans all configured function source directories.
-
-**Benefits:**
-- ✅ **Multi-project support**: Works with projects that have separate function directories (e.g., `functions`, `functions-v2`)
-- ✅ **Automatic detection**: Reads `firebase.json` to identify all function source directories
-- ✅ **Smart scanning**: Only scans configured directories, ignoring external packages like `node_modules`
-
-### 🔍 Improved File Scanning
-
-- **Better ignore patterns**: Now correctly ignores `node_modules` at any directory level
-- **Project-aware scanning**: Respects Firebase project structure and only scans relevant directories
-
-## What's New in v1.0.5
-
-### 🎯 Object Property Dependency Tracking
-
-**fire-diff** now intelligently tracks changes to individual object properties! When you modify a single property in an object (e.g., `GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS`), only functions that actually use that specific property are marked as affected.
-
-**Example:**
-```typescript
-// constants.ts
-export const GATHERING_FIELD_KEYS = {
-  CREATOR: "cre",
-  LAST_UPDATE_OPTIONS: "luo",  // ← Only this property changed
-} as const;
-
-// session.ts
-export const setSessionOptionsChanged = async (...) => {
-  // Uses GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS
-  const ref = sessionDb().ref(`.../${GATHERING_FIELD_KEYS.LAST_UPDATE_OPTIONS}`)
-  // ✅ This function WILL be affected
-};
-
-// gathering.ts
-export const onGatheringCreated = onValueCreated(..., async (event) => {
-  // Uses GATHERING_FIELD_KEYS.CREATOR
-  const creator = snapshot.child(`${GATHERING_FIELD_KEYS.CREATOR}`);
-  // ✅ This function will NOT be affected (different property)
-});
-```
-
-**Benefits:**
-- ✅ **Reduced false positives**: No more unnecessary deployments when unrelated properties change
-- ✅ **Precise tracking**: AST-based analysis ensures accurate property usage detection
-- ✅ **Backward compatible**: Regular variables (e.g., `DEFAULT_LIMIT = 3`) continue to work as before
-
 ## Installation
 
 ### Global Installation
@@ -250,17 +120,36 @@ fire-diff -h
 
 ### Analyze Command
 
+When both V1 and V2 functions are affected:
 ```
-Affected endpoints:
--------------------
+Affected endpoints (v1):
+----------------------
 iap-logPurchaseToken
 iap-listenAppleOrder
+
+Ready to deploy (v1):
+---------------------
+firebase deploy --only functions:iap-logPurchaseToken,functions:iap-listenAppleOrder
+
+Affected endpoints (v2):
+----------------------
 iap-removeAdsWithGold
 iap-readPurchases
 
-Ready to deploy:
-----------------
-firebase deploy --only functions:iap-logPurchaseToken,functions:iap-listenAppleOrder,functions:iap-removeAdsWithGold,functions:iap-readPurchases
+Ready to deploy (v2):
+---------------------
+firebase deploy --only functions:iap-removeAdsWithGold,functions:iap-readPurchases
+```
+
+When only one version is affected, only that version's output is shown:
+```
+Affected endpoints (v2):
+----------------------
+gf-makeMoveV2
+
+Ready to deploy (v2):
+---------------------
+firebase deploy --only functions:gf-makeMoveV2
 ```
 
 ### Endpoints Command
@@ -318,6 +207,52 @@ The tool will:
 4. **Deployment Mapping**: Maps affected functions to deployment groups based on your `index.ts` structure
 
 ## Changelog
+
+### [1.0.10] - 2025-01-17
+
+#### Added
+- **Version-separated deployment output**: The `analyze` command now separates Firebase Functions V1 and V2 endpoints in deployment output, generating separate deployment commands for each version
+- **Version-specific filtering**: New `getDeployNamesByVersion()` method in `DeployMaker` class to filter deployment names by Firebase Functions version
+
+#### Changed
+- **Deployment output format**: Deployment commands are now grouped by version (v1/v2) instead of a single combined command
+- **CLI output structure**: Affected endpoints are now displayed separately for V1 and V2 functions
+
+#### Technical Improvements
+- Added `version` field to `AnalysisSeed` interface to track Firebase Functions version information
+- Enhanced `analyzer.ts` to capture version information when detecting endpoints using `getEndpointInfo()`
+- Updated `cli.ts` to use version-specific deployment name generation
+- Improved output formatting to clearly distinguish between V1 and V2 deployments
+
+**Example:**
+```bash
+# Before: Single combined output
+Affected endpoints:
+-------------------
+gf-makeMoveV2
+checkGameTimeouts
+
+Ready to deploy:
+----------------
+firebase deploy --only functions:gf-makeMoveV2,functions:checkGameTimeouts
+
+# After: Separated by version
+Affected endpoints (v1):
+----------------------
+checkGameTimeouts
+
+Ready to deploy (v1):
+---------------------
+firebase deploy --only functions:checkGameTimeouts
+
+Affected endpoints (v2):
+----------------------
+gf-makeMoveV2
+
+Ready to deploy (v2):
+---------------------
+firebase deploy --only functions:gf-makeMoveV2
+```
 
 ### [1.0.8] - 2025-01-16
 

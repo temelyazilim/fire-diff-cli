@@ -191,4 +191,42 @@ export class DeployMaker {
 
     return Array.from(finalNames);
   }
+
+  /**
+   * Generates the final, unique list of deployable function names filtered by version.
+   * @param version The Firebase Functions version to filter by ('v1' or 'v2').
+   * @returns An array of strings filtered by the specified version.
+   */
+  public getDeployNamesByVersion(version: 'v1' | 'v2'): string[] {
+    const finalNames = new Set<string>();
+
+    for (const endpoint of this.affectedEndPoints) {
+      // Filter by version - only include endpoints matching the specified version
+      if (endpoint.version !== version) {
+        continue;
+      }
+      
+      // Rule 1: If endpoint is in 'index.ts' (main entry file)
+      if (endpoint.path === this.indexTsPath) {
+        finalNames.add(endpoint.fn);
+        continue;
+      }
+
+      // Rule 2: If endpoint is in the deployment group map
+      const parsedPath = path.parse(endpoint.path);
+      const pathWithoutExtension = path.resolve(parsedPath.dir, parsedPath.name);
+      
+      const groupName = this.deploymentNameMap.get(pathWithoutExtension);
+
+      if (groupName) {
+        // V1 notation: 'group-function'
+        finalNames.add(`${groupName}-${endpoint.fn}`);
+      } else {
+        // Rule 3: V2 or not in map (use function name as-is)
+        finalNames.add(endpoint.fn);
+      }
+    }
+
+    return Array.from(finalNames);
+  }
 }

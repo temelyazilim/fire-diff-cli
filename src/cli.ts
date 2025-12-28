@@ -47,22 +47,41 @@ function analysisProcedure(): void {
 
         // Generate deployment names based on affected endpoints
         const dm = new DeployMaker(analyzer.endPoints, analyzer.root);
-        const deployNames = dm.getDeployNames();
+        const deployNamesV1 = dm.getDeployNamesByVersion('v1');
+        const deployNamesV2 = dm.getDeployNamesByVersion('v2');
         
-        // Output the deployment names with headers
-        if (deployNames.length > 0) {
-            // List format: one per line
-            console.log('Affected endpoints:');
-            console.log('-------------------');
-            console.log(deployNames.join('\n'));
-            console.log('');
+        // Output the deployment names with headers, separated by version
+        const hasV1 = deployNamesV1.length > 0;
+        const hasV2 = deployNamesV2.length > 0;
+        
+        if (hasV1 || hasV2) {
+            // V1 endpoints output
+            if (hasV1) {
+                console.log('Affected endpoints (v1):');
+                console.log('----------------------');
+                console.log(deployNamesV1.join('\n'));
+                console.log('');
+                
+                console.log('Ready to deploy (v1):');
+                console.log('---------------------');
+                const deployCommandV1 = `firebase deploy --only ${deployNamesV1.map(name => `functions:${name}`).join(',')}`;
+                console.log(deployCommandV1);
+                console.log("");
+            }
             
-            // Single line format: ready to deploy (Firebase format)
-            console.log('Ready to deploy:');
-            console.log('----------------');
-            const deployCommand = `firebase deploy --only ${deployNames.map(name => `functions:${name}`).join(',')}`;
-            console.log(deployCommand);
-            console.log("");
+            // V2 endpoints output
+            if (hasV2) {
+                console.log('Affected endpoints (v2):');
+                console.log('----------------------');
+                console.log(deployNamesV2.join('\n'));
+                console.log('');
+                
+                console.log('Ready to deploy (v2):');
+                console.log('---------------------');
+                const deployCommandV2 = `firebase deploy --only ${deployNamesV2.map(name => `functions:${name}`).join(',')}`;
+                console.log(deployCommandV2);
+                console.log("");
+            }
         } else {
             console.log('[FIRE-DIFF] No affected endpoints found.');
         }
